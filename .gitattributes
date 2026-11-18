@@ -1,0 +1,19 @@
+* text=auto eol=lf
+
+*.cjs   text
+*.mjs   text
+*.ts    text
+*.tsx   text
+*.css   text
+*.html  text
+*.json  text
+*.md    text
+*.cs    text
+*.csproj text
+*.nsh   text
+
+*.exe     binary
+*.ico     binary
+*.png     binary
+*.woff2   binary
+*.asar    binary

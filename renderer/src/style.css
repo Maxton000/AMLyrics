@@ -1,0 +1,1679 @@
+/* HomoLyrics 歌词页样式（Apple Music 深色沉浸风格，竖屏/横屏自适应）
+ * 统一视图：播放页与歌词页共用 .player-view，切换只改布局类（.lyrics-mode），
+ * 封面/歌名/按钮通过 FLIP 过渡，底部控制区固定不动。
+ */
+
+/* Inter 字体（本地打包，离线加载） */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  src: url('./fonts/Inter-400.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  src: url('./fonts/Inter-600.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  src: url('./fonts/Inter-700.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 800;
+  src: url('./fonts/Inter-800.woff2') format('woff2');
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: #000;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'HarmonyOS Sans', 'Microsoft YaHei', sans-serif;
+}
+
+/* 去除点击按钮时的青蓝色高亮，统一 border-box 避免 padding 撑破布局 */
+* {
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.app-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* 背景层（BackgroundRender 内部会再创建渲染容器） */
+.bg-render {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* ==================== 统一视图（播放页 / 歌词页） ==================== */
+
+.player-view {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  pointer-events: auto;
+  font-family: 'Inter', 'PingFang SC', 'HarmonyOS Sans', 'Microsoft YaHei', sans-serif;
+}
+
+/* 顶部区域：播放页为大封面 + 歌名行；歌词页收缩为顶部标题栏（FLIP 动画过渡）
+ * 无边框窗口拖拽由渲染层 pointerdown + 主进程 IPC 实现（见 bridge/index.tsx），
+ * 这里不再使用 -webkit-app-region: drag（它会吞掉指针事件导致自定义拖拽失效），
+ * 空白区域的 cursor 用下面规则提示可拖动 */
+.player-top {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 15vh 20px 0;
+  z-index: 5;
+  cursor: default;
+  transition: opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 顶部区域与背景空白处显示可拖动光标，交互子元素恢复正常光标 */
+.player-top,
+.bg-render {
+  cursor: move;
+}
+.amll-clock,
+.flip-cover,
+.player-track-row,
+.player-track-row *,
+.player-fixed,
+.player-fixed * {
+  cursor: pointer;
+}
+
+.player-view.lyrics-mode .player-top {
+  flex: none;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  width: 100%;
+  padding: calc(env(safe-area-inset-top, 0px) + 14px) 16px 14px;
+  /* 保持轻量渐变（顶部略深便于文字辨识，底部透明），不遮黑 */
+  background: linear-gradient(rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0));
+}
+
+/* 底部固定控制区：播放页/歌词页保持相同屏幕位置（margin-top:auto 锚定底部）。
+ * 背景透明（露出真实背景层），歌词被上面 lyric-player-wrap 的 mask 挡在控制区外。
+ * 显隐动画：出现时减速上升（ease-out），消失时加速下坠（ease-in + 下移） */
+.player-fixed {
+  position: relative;
+  flex-shrink: 0;
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 20px 16px;
+  z-index: 5;
+  transform: translateY(0);
+  /* 出现：减速上升，稍慢更柔和 */
+  transition: opacity 0.65s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.65s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* 无触摸自动隐藏：仅底部控制区淡出并加速下坠，顶部标题栏常驻。
+ * 歌词渲染区高度保持固定（不随控制区显隐变化），避免歌词中心位置移动 */
+.app-root.ui-hidden .player-fixed {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(60px);
+  /* 消失：加速下坠，更快更干脆 */
+  transition: opacity 0.26s cubic-bezier(0.55, 0, 0.85, 0.36),
+    transform 0.26s cubic-bezier(0.55, 0, 0.85, 0.36);
+}
+
+/* ==================== 专辑封面（FLIP 容器） ==================== */
+
+.flip-cover {
+  width: min(78vw, 420px);
+  aspect-ratio: 1 / 1;
+  flex-shrink: 0;
+  /* 封面左滑/右滑切歌：接管手势，避免浏览器拦截滑动 */
+  touch-action: none;
+}
+
+.player-view.lyrics-mode .flip-cover {
+  width: 48px;
+  height: 48px;
+  cursor: pointer;
+}
+
+.player-cover {
+  width: 100%;
+  height: 100%;
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.04) 55%),
+    linear-gradient(145deg, rgba(120, 120, 160, 0.5), rgba(40, 40, 60, 0.7));
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.26);
+  overflow: hidden;
+  /* 圆角过渡由 FLIP 动画的 WAAPI 处理（随缩放比例换算），此处不设 CSS transition，
+   * 保证切换瞬间 getComputedStyle 直接返回目标圆角值 */
+  transition: transform 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.player-view.playing .player-cover {
+  transform: scale(1);
+}
+
+.player-view.paused .player-cover {
+  transform: scale(0.82);
+}
+
+.player-view.lyrics-mode .player-cover {
+  transform: scale(1);
+  border-radius: 8px;
+}
+
+.player-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cover-placeholder {
+  width: 100%;
+  height: 100%;
+  background:
+    radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.04) 55%),
+    linear-gradient(145deg, rgba(120, 120, 160, 0.5), rgba(40, 40, 60, 0.7));
+}
+
+/* ==================== 歌名行（FLIP 目标：歌名/歌手 + 收藏/更多） ==================== */
+
+.player-track-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  width: min(96%, 600px);
+  margin-top: 26px;
+}
+
+.player-view.lyrics-mode .player-track-row {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  margin-top: 0;
+}
+
+.player-track-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.player-title {
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 18px;
+  font-weight: 800;
+  text-align: left;
+}
+
+.player-artist {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 18px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.player-view.lyrics-mode .player-title {
+  font-size: 15px;
+}
+
+.player-view.lyrics-mode .player-artist {
+  font-size: 13px;
+}
+
+/* 水平滚动文本：超长时停留数秒后向左滚动，两端模糊渐变遮罩 */
+.marquee {
+  position: relative;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.marquee.overflowing {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 24px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 24px), transparent);
+}
+
+.marquee-track {
+  display: inline-block;
+  white-space: nowrap;
+  will-change: transform;
+  transition-property: transform;
+  transition-timing-function: linear;
+}
+
+.player-track-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.icon-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  touch-action: manipulation;
+  transition: background 0.12s ease;
+}
+
+/* 按下反馈：半透明白色圆形背景 */
+.icon-btn:active {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+/* 收藏按钮激活态：Apple Music 风格——黑色实心星 + 白色圆形背景 */
+.icon-btn.fav-btn.active {
+  color: #000000;
+  background: #FFFFFF;
+}
+
+/* 翻译/罗马音切换按钮（标题行动作区）：激活时反色，仿 TabletDeskClock */
+.icon-btn.tool-ibtn {
+  transition: background 0.25s ease, color 0.25s ease;
+}
+.icon-btn.tool-ibtn.active {
+  color: #000000;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+/* 时钟（封面正上方，仿 TabletDeskClock 音乐页）：字号由 JS 按封面宽度设置 */
+.amll-clock {
+  flex: none;
+  box-sizing: border-box;
+  text-align: center;
+  font-family: 'Inter', 'PingFang SC', 'HarmonyOS Sans', 'Microsoft YaHei', sans-serif;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  color: rgba(255, 255, 255, 0.92);
+  margin: 12px 0 10px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+  /* 与封面同款 620ms 曲线插值宽度/字号，FLIP 位移由 JS 补间 */
+  transition: width 0.62s cubic-bezier(0.16, 1, 0.3, 1),
+    font-size 0.62s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* 歌词页：时钟随封面缩到顶部标题栏，仍保持显示（不再隐藏） */
+
+/* 窗口控制：右上角 hover 滑出的最小化/关闭按钮（Electron 无边框窗口） */
+.window-controls {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 108px;
+  height: 48px;
+  z-index: 60;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 12px 0 0;
+  pointer-events: none;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+.window-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(20, 20, 22, 0.62);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateY(-10px);
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  transition: opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), background 0.15s ease;
+}
+.window-controls:hover .window-btn,
+.window-btn:focus-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.window-btn:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+.window-btn.minimize-btn:hover {
+  background: rgba(255, 255, 255, 0.34);
+}
+.window-btn.close-btn:hover {
+  background: #e81123;
+  color: #fff;
+}
+
+/* 轻提示（收藏反馈） */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 180px;
+  transform: translateX(-50%);
+  background: rgba(30, 30, 32, 0.92);
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 14px;
+  padding: 10px 20px;
+  border-radius: 22px;
+  z-index: 20;
+  pointer-events: none;
+  white-space: nowrap;
+  animation: toast-in 0.25s ease;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+/* ==================== 播放列表（队列） ==================== */
+
+/* 全屏遮罩：居中承载菜单/队列卡片 */
+.menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@keyframes menuIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ===== 更多面板：字体大小 / 时差 / 歌词源优先级（仿 TabletDeskClock） ===== */
+.more-sheet {
+  width: min(94vw, 420px);
+  max-height: 82vh;
+  display: flex;
+  flex-direction: column;
+  background: rgba(42, 42, 46, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(24px);
+  overflow: hidden;
+  animation: menuIn 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.more-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  padding: 14px 16px 10px;
+}
+
+.more-title {
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.more-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 20px 20px;
+  overflow-y: auto;
+}
+
+.more-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 13px 2px;
+}
+
+.more-label {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* 开关（更多面板：显示时钟等布尔项） */
+.toggle-switch {
+  position: relative;
+  width: 46px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.16);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background 0.2s ease;
+  flex: 0 0 auto;
+}
+
+.toggle-switch.on {
+  background: #1db954;
+}
+
+.toggle-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #ffffff;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.toggle-switch.on .toggle-knob {
+  transform: translateX(20px);
+}
+
+.stepper {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+
+.step-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: manipulation;
+  transition: background 0.15s ease;
+}
+
+.step-btn:active {
+  background: rgba(255, 255, 255, 0.26);
+}
+
+.step-value {
+  min-width: 64px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 15px;
+  font-weight: 700;
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', ui-monospace, monospace;
+}
+
+.step-value.changed {
+  color: #1AA869;
+}
+
+.more-reset {
+  align-self: center;
+  margin-top: 2px;
+  border: none;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 9px 22px;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background 0.15s ease;
+}
+
+.more-reset:active {
+  background: rgba(255, 255, 255, 0.26);
+}
+
+.more-section-title {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 14px 2px 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  margin-top: 8px;
+}
+
+.source-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.source-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.source-rank {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #1AA869;
+  color: #FFFFFF;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.source-name {
+  flex: 1;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.source-actions {
+  display: flex;
+  flex-direction: row;
+  gap: 6px;
+}
+
+.source-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: manipulation;
+}
+
+.source-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.source-btn:active:not(:disabled) {
+  background: rgba(255, 255, 255, 0.26);
+}
+
+.queue-sheet {
+  width: min(94vw, 420px);
+  max-height: 62vh;
+  display: flex;
+  flex-direction: column;
+  background: rgba(42, 42, 46, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(24px);
+  overflow: hidden;
+  animation: menuIn 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.queue-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  padding: 14px 16px 10px;
+}
+
+.queue-title {
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.queue-close {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 15px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.queue-close:active {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.queue-body {
+  overflow-y: auto;
+  padding: 4px 10px 12px;
+}
+
+.queue-empty {
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 14px;
+  text-align: center;
+  padding: 32px 16px;
+}
+
+.queue-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 11px 12px;
+  border-radius: 12px;
+  position: relative;
+}
+
+.queue-item.current {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.queue-item-title {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 15px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-right: 28px;
+}
+
+.queue-item.current .queue-item-title {
+  color: #1AA869;
+}
+
+.queue-item-artist {
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue-item-now {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #1AA869;
+  font-size: 13px;
+}
+
+.dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2.5px;
+}
+
+.dots i {
+  display: block;
+  width: 3.5px;
+  height: 3.5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* ==================== 歌词层 ==================== */
+
+.lyrics-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+.player-view.lyrics-mode .lyrics-layer {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* 歌词内容容器：顶部避开标题栏（--top-h），底部通到底（bottom:0，控制区为浮层）。
+ * 高度恒定，不随控制区显隐变化，歌词中心位置稳定。
+ * - mask：顶部 36px 淡入；控制区（--fixed-h）上方 40px 歌词自身淡出（软化边界，
+ *   不加任何暗色覆盖层）；控制区范围内完全透明（歌词不渗入）
+ * - clip-path：裁掉控制区（--fixed-h）；控制区隐藏时 --fixed-h 归零，
+ *   clip 平滑上移，歌词铺满全屏不突变 */
+.lyric-player-wrap {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: var(--top-h, 0px);
+  bottom: 0;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(to bottom,
+    transparent 0,
+    #000 36px,
+    #000 calc(100% - var(--fixed-h, 230px) - 40px),
+    transparent calc(100% - var(--fixed-h, 230px)),
+    transparent 100%);
+  mask-image: linear-gradient(to bottom,
+    transparent 0,
+    #000 36px,
+    #000 calc(100% - var(--fixed-h, 230px) - 40px),
+    transparent calc(100% - var(--fixed-h, 230px)),
+    transparent 100%);
+  -webkit-clip-path: inset(0 0 var(--fixed-h, 230px) 0);
+  clip-path: inset(0 0 var(--fixed-h, 230px) 0);
+  transition: clip-path 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.player-view.lyrics-mode .lyric-player-wrap {
+  pointer-events: auto;
+}
+
+/* 控制区隐藏时：--fixed-h 归零 → mask 的底部淡出移到屏幕最底（轻微渐隐），
+ * clip 平滑上移裁切，歌词铺满全屏 */
+.app-root.ui-hidden {
+  --fixed-h: 0px !important;
+}
+
+.app-root.ui-hidden .lyric-player-wrap {
+  -webkit-clip-path: inset(0 0 0 0);
+  clip-path: inset(0 0 0 0);
+}
+
+.lyric-player-el {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* 底部信息（LyricPlayer bottomLine 插槽） */
+.bottom-line {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 13px;
+  letter-spacing: 0.3px;
+  text-align: center;
+  max-width: 90vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 歌词字体加粗（AMLL 歌词行继承该字重） */
+.amll-lyric-player {
+  font-weight: 700;
+  font-family: 'Inter', 'PingFang SC', 'HarmonyOS Sans', 'Microsoft YaHei', sans-serif;
+}
+
+/* 翻译/罗马音显示切换：行内子行顺序为 main(1) / 翻译(2) / 罗马音(3) */
+.lyric-player-el.no-translation .FmKaba_lyricLine > div:nth-of-type(2) {
+  display: none !important;
+}
+
+.lyric-player-el.no-romaji .FmKaba_lyricLine > div:nth-of-type(3) {
+  display: none !important;
+}
+
+/* 歌词行宽度最大化：充分利用容器避免右侧大量留白即换行；保留左右内边距间距 */
+.amll-lyric-player.dom {
+  --amll-lp-width: 100%;
+  --lyric-line-padding-x: 0.6em;
+}
+
+/* ==================== 底部固定控制区内容 ==================== */
+
+/* 进度条：整行进度条 + 下方一行（左当前时间 / 右剩余时间）
+ * margin-top 拉开与标题区的距离（进度条位置下移），下方各控制区间距收紧更紧凑 */
+.player-progress {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(96%, 600px);
+  margin-top: 40px;
+}
+
+/* 翻译/罗马音切换工具栏：绝对定位悬在进度条左端上方，不影响控制区布局。
+ * 默认隐藏，进入歌词页时淡入上浮（延迟过渡，避免与整页切换动画抢节奏） */
+.player-toolbar {
+  position: absolute;
+  top: -46px;
+  left: -4px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  pointer-events: auto;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-6px);
+  transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+    visibility 0s linear 0.35s;
+}
+
+.player-view.lyrics-mode .player-toolbar {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.tool-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 14px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+.tool-btn.active {
+  background: rgba(255, 255, 255, 0.92);
+  color: #000000;
+}
+
+.progress-time-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.progress-time {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+  font-weight: 800;
+  /* 等宽字体：数字变化时宽度不变 */
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', ui-monospace, monospace;
+  line-height: 1;
+}
+
+/* 冒号/负号等分隔符：单独用 Inter 字体（等宽冒号空隙过大），加粗 */
+.digit-cell.sep {
+  font-family: 'Inter', 'PingFang SC', 'HarmonyOS Sans', 'Microsoft YaHei', sans-serif;
+  font-weight: 800;
+}
+
+/* 时间数字逐位下沉动画：旧数字下沉模糊消失、新数字从上方下沉清晰进入，带回弹 */
+.digit-cell {
+  display: inline-block;
+}
+
+.digit-cell.sep {
+  display: inline-block;
+}
+
+.digit-anim {
+  position: relative;
+  display: inline-block;
+  height: 1em;
+  line-height: 1em;
+}
+
+.digit-new {
+  display: inline-block;
+  animation: digitIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.digit-old {
+  position: absolute;
+  left: 0;
+  top: 0;
+  animation: digitOut 0.35s cubic-bezier(0.3, 0.8, 0.3, 1) both;
+}
+
+@keyframes digitIn {
+  0% {
+    transform: translateY(-80%);
+    filter: blur(4px);
+    opacity: 0;
+  }
+  60% {
+    filter: blur(0);
+  }
+  100% {
+    transform: translateY(0);
+    filter: blur(0);
+    opacity: 1;
+  }
+}
+
+@keyframes digitOut {
+  0% {
+    transform: translateY(0);
+    filter: blur(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(70%);
+    filter: blur(4px);
+    opacity: 0;
+  }
+}
+
+.progress-track {
+  flex: 1;
+  height: 16px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  touch-action: none;
+}
+
+/* 容错触控区：上下各扩展 14px 都判定为可拖动 */
+.progress-track::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -14px;
+  bottom: -14px;
+}
+
+.progress-track::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 6px;
+  /* 任意高度下两端始终圆头 */
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.2);
+  /* 变粗/变细：非线性 + 轻微回弹 */
+  transition: height 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.progress-fill {
+  height: 6px;
+  /* 左端圆头、右端保持直/平；满格（到底）时两端都圆头 */
+  border-radius: 999px 0 0 999px;
+  background: rgba(255, 255, 255, 0.55);
+  /* 宽度突变（点击/系统调整）：非线性无回弹；高度（按下变粗）：非线性轻微回弹 */
+  transition: width 0.5s cubic-bezier(0.16, 1, 0.3, 1), height 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
+    border-radius 0.25s ease;
+}
+
+/* 满格（拖动/播放到底）：右端也变为圆头 */
+.progress-fill.full,
+.progress-track.active .progress-fill.full {
+  border-radius: 999px;
+}
+
+/* 按下/拖动：进度条变粗（轻微回弹过渡） */
+.progress-track.active::before,
+.progress-track.active .progress-fill {
+  height: 12px;
+}
+
+/* 拖动中：宽度禁用过渡，跟随手指；高度仍保留回弹 */
+.progress-track.active .progress-fill {
+  transition: width 0s, height 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), border-radius 0.25s ease;
+}
+
+/* 控制按钮：上一曲 | 播放/暂停 | 下一曲（占位较大，上下留空隙） */
+.player-controls {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 36px;
+  width: 100%;
+  margin-top: 22px;
+  margin-bottom: 8px;
+}
+
+.ctl-btn {
+  border: none;
+  background: none;
+  color: rgba(255, 255, 255, 0.9);
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  touch-action: manipulation;
+  /* 箭头飞行动画裁切在圆形按钮内，超出的不显示 */
+  overflow: hidden;
+  /* 按下背景即时出现，仅做轻微淡入 */
+  transition: background 0.12s ease;
+}
+
+/* 按下反馈：半透明白色圆形背景 */
+.ctl-btn:active {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.ctl-btn i {
+  font-size: 24px;
+  color: inherit;
+}
+
+.ctl-btn.main {
+  width: 88px;
+  height: 88px;
+}
+
+.ctl-btn.main .ctl-icon {
+  font-size: 42px;
+}
+
+.ctl-btn.main .ctl-ico {
+  font-size: 42px;
+}
+
+/* 播放/暂停图标切换动画：旧图标加速缩小至 65%（初速度外抛），
+ * 新图标自 65% 初速度减速放大至 100%（延迟到旧图标缩至 65% 后开始）
+ * 两个图标均以自身中心对齐到按钮正中（translate(-50%,-50%) 保持居中） */
+.ctl-icon {
+  position: relative;
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+}
+
+.ctl-ico {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  /* 非当前图标：停在小尺寸淡出态（保持居中） */
+  transform: translate(-50%, -50%) scale(0.65);
+  opacity: 0;
+}
+
+/* 当前图标 = 播放（playing）时：暂停图标进入（自 65% 减速放大，延迟开始） */
+.ctl-icon.playing .fa-pause {
+  transform: translate(-50%, -50%) scale(1);
+  opacity: 1;
+  transition: transform 0.34s cubic-bezier(0.16, 1, 0.3, 1) 0.24s,
+    opacity 0.24s ease 0.24s;
+}
+
+/* 当前图标 = 暂停（paused）时：播放图标进入 */
+.ctl-icon.paused .fa-play {
+  transform: translate(-50%, -50%) scale(1);
+  opacity: 1;
+  transition: transform 0.34s cubic-bezier(0.16, 1, 0.3, 1) 0.24s,
+    opacity 0.24s ease 0.24s;
+}
+
+/* 非当前图标退出（切换瞬间）：立即从 100% 加速缩小至 65% 并淡出 */
+.ctl-icon.paused .fa-pause,
+.ctl-icon.playing .fa-play {
+  transform: translate(-50%, -50%) scale(0.65);
+  opacity: 0;
+  transition: transform 0.24s cubic-bezier(0.55, 0, 0.85, 0.36),
+    opacity 0.24s ease;
+}
+
+/* 按下（未抬起）时图标缩小反馈 */
+.ctl-btn.main .ctl-icon {
+  transition: transform 0.15s ease;
+}
+
+.ctl-btn.main:active .ctl-icon {
+  transform: scale(0.9);
+}
+
+.ctl-btn:not(.main) .switch-arrow {
+  transition: transform 0.15s ease;
+}
+
+.ctl-btn:not(.main):active .switch-arrow {
+  transform: scale(0.9);
+}
+
+/* ==================== 上一曲/下一曲箭头过渡动画 ====================
+ * 松开后：旧箭头加速"刷地"飞出（whoosh，ease-in 加速）；
+ * 新箭头自后方跟上，以非线性 + 轻微回弹（overshoot）落位（follow）。
+ * 两箭头均以自身中心定位（translate(-50%,-50%)），并保留 scaleX(1.4) 加宽 */
+.switch-arrow {
+  position: relative;
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  line-height: 1;
+}
+
+.switch-arrow i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) scaleX(1.4);
+}
+
+/* 旧箭头：加速刷过并淡出 */
+.switch-arrow .arrow-ghost {
+  animation: arrowWhoosh 0.38s cubic-bezier(0.55, 0, 0.85, 0.36) both;
+}
+
+/* 新箭头：自后方跟上，回弹落位（非线性 + 轻微回弹） */
+.switch-arrow .arrow-main.follow {
+  animation: arrowFollow 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.switch-arrow.next .arrow-ghost {
+  animation-name: arrowWhooshNext;
+}
+
+.switch-arrow.prev .arrow-ghost {
+  animation-name: arrowWhooshPrev;
+}
+
+.switch-arrow.next .arrow-main.follow {
+  animation-name: arrowFollowNext;
+}
+
+.switch-arrow.prev .arrow-main.follow {
+  animation-name: arrowFollowPrev;
+}
+
+@keyframes arrowWhooshNext {
+  0% {
+    transform: translate(-50%, -50%) scaleX(1.4) translateX(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scaleX(1.4) translateX(110px);
+    opacity: 0;
+  }
+}
+
+@keyframes arrowWhooshPrev {
+  0% {
+    transform: translate(-50%, -50%) scaleX(1.4) translateX(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scaleX(1.4) translateX(-110px);
+    opacity: 0;
+  }
+}
+
+@keyframes arrowFollowNext {
+  0% {
+    transform: translate(-50%, -50%) scaleX(1.4) translateX(-110px);
+    opacity: 0;
+  }
+  100% {
+    transform: translate(-50%, -50%) scaleX(1.4) translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes arrowFollowPrev {
+  0% {
+    transform: translate(-50%, -50%) scaleX(1.4) translateX(110px);
+    opacity: 0;
+  }
+  100% {
+    transform: translate(-50%, -50%) scaleX(1.4) translateX(0);
+    opacity: 1;
+  }
+}
+
+/* 音量条：静音喇叭 | 条 | 高音喇叭 */
+.player-volume {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  width: min(96%, 600px);
+  margin-top: 24px;
+}
+
+.vol-icon {
+  border: none;
+  background: none;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 13.5px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.vol-track {
+  flex: 1;
+  height: 16px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  touch-action: none;
+}
+
+/* 容错触控区：上下各扩展 14px 都判定为可拖动 */
+.vol-track::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -14px;
+  bottom: -14px;
+}
+
+.vol-track::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 6px;
+  /* 任意高度下两端始终圆头 */
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.2);
+  /* 变粗/变细：非线性 + 轻微回弹 */
+  transition: height 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.vol-clip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 6px;
+  overflow: hidden;
+  transition: height 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.vol-fill {
+  height: 100%;
+  width: 100%;
+  /* 左端圆头、右端保持直/平；满格（到底）时两端都圆头 */
+  border-radius: 999px 0 0 999px;
+  background: rgba(255, 255, 255, 0.5);
+  /* 宽度突变（点击/系统调整）：非线性无回弹 */
+  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1), border-radius 0.25s ease;
+}
+
+/* 满格（拖动/音量到底）：右端也变为圆头 */
+.vol-fill.full,
+.vol-track.active .vol-fill.full {
+  border-radius: 999px;
+}
+
+/* 按下/拖动：音量条变粗（轻微回弹过渡） */
+.vol-track.active::before,
+.vol-track.active .vol-clip {
+  height: 12px;
+}
+
+/* 拖动中：宽度禁用过渡，跟随手指 */
+.vol-track.active .vol-fill {
+  transition: width 0s, border-radius 0.25s ease;
+}
+
+/* 底部三按钮：歌词 | 隔空播放 | 播放列表 */
+.player-bottom {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 60px;
+  width: 100%;
+  margin-top: 10px;
+  padding-bottom: 12px;
+}
+
+.bottom-btn {
+  border: none;
+  background: none;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 12px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background 0.15s ease, color 0.3s ease;
+}
+
+/* 按下反馈：半透明白色圆形背景 */
+.bottom-btn:active {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.bottom-icon {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.bottom-icon.combo {
+  position: relative;
+  display: inline-block;
+}
+
+.bottom-icon.combo .fa-message {
+  transform: scaleY(0.95);
+  -webkit-text-stroke: 0.5px currentColor;
+}
+
+.bottom-icon.combo .fa-quote-right {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  transform: translate(-50%, -50%);
+  font-size: 0.48em;
+}
+
+/* 歌词按钮激活态：歌词页时实色背景（反色），无阴影 */
+.bottom-btn.lyrics-btn.active {
+  background: rgba(255, 255, 255, 0.92);
+  color: #000000;
+}
+
+/* ==================== 手机横屏（宽 700-899px）：紧凑横屏布局 ==================== */
+
+@media (orientation: landscape) and (min-width: 700px) and (max-width: 899px) {
+  .player-top {
+    padding: 4vh 32px 0;
+  }
+
+  .flip-cover {
+    width: min(24vw, 280px);
+  }
+
+  .player-track-row,
+  .player-progress,
+  .player-volume {
+    width: min(56vw, 520px);
+  }
+
+  .player-fixed {
+    padding: 0 32px 20px;
+  }
+
+  /* 歌词页：左侧封面/信息栏 + 右侧歌词 */
+  .player-view.lyrics-mode .player-top {
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    width: 30vw;
+    max-width: 340px;
+    padding: calc(env(safe-area-inset-top, 0px) + 48px) 24px 0;
+    gap: 20px;
+    background: none;
+  }
+
+  .player-view.lyrics-mode .flip-cover {
+    width: 22vw;
+    max-width: 260px;
+    height: auto;
+    aspect-ratio: 1 / 1;
+  }
+
+  .player-view.lyrics-mode .player-track-row {
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    gap: 10px;
+  }
+
+  .player-view.lyrics-mode .player-track-meta {
+    align-items: center;
+  }
+
+  .player-view.lyrics-mode .player-title,
+  .player-view.lyrics-mode .player-artist {
+    text-align: center;
+  }
+
+  .player-view.lyrics-mode .player-track-actions {
+    margin-left: 0;
+  }
+
+  .player-view.lyrics-mode .lyric-player-wrap {
+    left: 30vw;
+    top: 0;
+  }
+}
+
+/* ==================== 平板/大屏（≥900px）：播放页紧凑化 ==================== */
+
+@media (min-width: 900px) {
+  /* 播放页：封面更大、内容整体垂直居中、标题与进度条间距收紧 */
+  .player-view:not(.lyrics-mode) {
+    justify-content: center;
+  }
+
+  .player-view:not(.lyrics-mode) .player-top {
+    flex: none;
+    padding: 0 32px 0;
+  }
+
+  .flip-cover {
+    width: min(34vw, 460px);
+  }
+
+  .player-track-row {
+    margin-top: 20px;
+  }
+
+  .player-view:not(.lyrics-mode) .player-fixed {
+    margin-top: 0;
+    padding: 16px 32px 12px;
+  }
+
+  /* 播放页与歌词页进度条上方间距一致（为翻译/罗马音工具栏留出空间），
+   * 保证两组高度相同、控制区纵向位置不变 */
+  .player-progress {
+    margin-top: 46px;
+  }
+
+  .player-view:not(.lyrics-mode) .player-track-row,
+  .player-view:not(.lyrics-mode) .player-progress,
+  .player-view:not(.lyrics-mode) .player-volume {
+    width: min(52vw, 540px);
+  }
+}
+
+/* ==================== 平板横屏大屏（≥900px 且横屏）：歌词页左右分栏（5% / 33% / 5% / 52% / 5%） ==================== */
+
+@media (min-width: 900px) and (orientation: landscape) {
+  /* 歌词页：左 5% 留白 + 播放页 33% + 中 5% 留白 + 歌词 52% + 右 5% 留白。
+   * 播放页与歌词页的内容组均垂直居中，且封面/字号/间距保持一致，
+   * 因此控制区在两个模式下纵向位置完全相同 → 切换时只有横向 width/margin-left 平滑过渡。 */
+  .player-view.lyrics-mode {
+    align-items: flex-start;
+    justify-content: center;
+  }
+
+  .player-view.lyrics-mode .player-top {
+    flex: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    width: 33%;
+    margin-left: 5%;
+    padding: 0 24px 0;
+    gap: 0;
+    background: none;
+  }
+
+  /* 歌词页封面与播放页同尺寸，保证两组高度一致、控制区纵向位置不变；
+   * 视觉上缩小一点：内层 .player-cover 缩放（布局盒不变，避免纵向跳动） */
+  .player-view.lyrics-mode .flip-cover {
+    width: min(34vw, 460px);
+    height: auto;
+    aspect-ratio: 1 / 1;
+  }
+
+  .player-view.lyrics-mode .player-cover {
+    transform: scale(0.72);
+    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+      border-radius 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* 歌名/歌手 与 收藏/更多 保持横向排列（按钮仍在右侧） */
+  .player-view.lyrics-mode .player-track-row {
+    flex: none;
+    flex-direction: row;
+    align-items: center;
+    width: 100%;
+    margin-top: 20px;
+  }
+
+  .player-view.lyrics-mode .player-track-meta {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .player-view.lyrics-mode .player-title {
+    font-size: 18px;
+  }
+
+  .player-view.lyrics-mode .player-artist {
+    font-size: 18px;
+  }
+
+  .player-view.lyrics-mode .player-title,
+  .player-view.lyrics-mode .player-artist {
+    text-align: left;
+  }
+
+  .player-view.lyrics-mode .player-track-actions {
+    flex-shrink: 0;
+    margin-left: 0;
+  }
+
+  /* 控制区（进度条→底部按钮整块）：显式宽度/左边距使其可平滑过渡。
+   * 播放页：全宽；歌词页：左 5% 起占 33%。纵向位置两模式一致，仅横向平移。 */
+  .player-fixed {
+    width: 100%;
+    margin-left: 0;
+    padding: 16px 32px 12px;
+    transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+      margin-left 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .player-view.lyrics-mode .player-fixed {
+    width: 33%;
+    margin-left: 5%;
+    margin-top: 0;
+    padding: 16px 24px 12px;
+  }
+
+  /* 歌词面板：左 43%（5+33+5）宽 52%（右 5% 留白），默认右移一屏，滑入无回弹 */
+  .lyrics-layer {
+    left: 43%;
+    right: 5%;
+    transform: translateX(100%);
+    transition: opacity 0.5s ease, transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .player-view.lyrics-mode .lyrics-layer {
+    transform: translateX(0);
+  }
+
+  .player-view.lyrics-mode .lyric-player-wrap {
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    -webkit-mask-image: none;
+    mask-image: none;
+    -webkit-clip-path: none;
+    clip-path: none;
+  }
+}

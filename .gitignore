@@ -1,0 +1,28 @@
+# 依赖
+node_modules/
+
+# 打包产物
+dist/
+dist-test*/
+*.zip
+
+# 前端构建产物（由 npm run build:web 生成）
+renderer/amll.bundle.js
+renderer/amll.bundle.css
+renderer/index.html
+renderer/*.woff2
+
+# SMTC helper 构建产物（由 npm run build:helper 生成）
+smtc-helper/publish/
+smtc-helper/SmtcBridge/bin/
+smtc-helper/SmtcBridge/obj/
+
+# 日志与系统文件
+*.log
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 本地临时目录
+.tmp-gh/
+.build-check/

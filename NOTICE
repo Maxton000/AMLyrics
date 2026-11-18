@@ -1,0 +1,15 @@
+HomoLyrics for Windows
+Copyright 2026 The HomoLyricsWin Authors
+
+This product includes software developed by third parties.
+
+The original source code of this project (everything authored in this
+repository) is licensed under the Apache License, Version 2.0. See the
+LICENSE file.
+
+IMPORTANT: this project depends on and bundles the Apple Music Like Lyrics
+(AMLL) packages, which are licensed under AGPL-3.0-only. That license is not
+compatible with Apache-2.0 for a combined work: if you distribute a built
+application (installer, portable executable or extracted bundle), the
+combined work must be distributed under AGPL-3.0, including complete
+corresponding source. See THIRD-PARTY-NOTICES.md for the full list.

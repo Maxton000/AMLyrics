@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>HomoLyrics</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: #000;
+      overflow: hidden;
+      overscroll-behavior: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    #root {
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <!-- 禁用 Intl.Segmenter：关闭 AMLL 的词级平衡换行（避免长行被拆成等宽多行导致右侧留白） -->
+  <script>
+    try { Intl.Segmenter = undefined; } catch (e) {}
+    try {
+      Object.defineProperty(Intl, 'Segmenter', { value: undefined, writable: true, configurable: true });
+    } catch (e) {}
+  </script>
+  <link rel="stylesheet" href="./amll.bundle.css">
+  <script src="./amll.bundle.js"></script>
+</body>
+</html>
