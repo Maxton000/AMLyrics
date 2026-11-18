@@ -66,7 +66,7 @@ export function parseLyric(rawText: string, format: LyricFormat): LyricLine[] {
         return [];
     }
   } catch (err) {
-    console.error('[HomoLyrics] parseLyric failed for format', format, err);
+    console.error('[AMLyrics] parseLyric failed for format', format, err);
     return [];
   }
 }

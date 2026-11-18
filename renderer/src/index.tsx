@@ -3,7 +3,7 @@
  *
  * - 播放进度 RAF 自驱动：保存 {position, state, syncTime}，playing 时
  *   currentTime = position + (performance.now() - syncTime)（毫秒整数），暂停冻结
- * - 切歌重置歌词并调用 window.HomoNative.fetchLyric(title, artist)
+ * - 切歌重置歌词并调用 window.AMLyricsNative.fetchLyric(title, artist)
  * - onLyricResult 按 format 调 lyricParse 生成 lyricLines
  * - bottomLine 插槽显示歌名+歌手；封面变更更新 BackgroundRender album
  * - 未检测到播放 / 未找到歌词 / 加载中 占位覆盖层（AMLL 深色风格）
@@ -64,14 +64,14 @@ const EMPTY_PLAYBACK: NowPlayingInfo = {
 };
 
 /** 歌词显示偏好 localStorage 键 */
-const PREF_KEY_TRANSLATION: string = 'homolyrics.showTranslation';
-const PREF_KEY_ROMAJI: string = 'homolyrics.showRomaji';
+const PREF_KEY_TRANSLATION: string = 'amlyrics.showTranslation';
+const PREF_KEY_ROMAJI: string = 'amlyrics.showRomaji';
 /** 时钟显示偏好（与 TabletDeskClock 音乐页一致） */
-const PREF_KEY_CLOCK: string = 'homolyrics.showClock';
-const PREF_KEY_CLOCK_SECONDS: string = 'homolyrics.clockSeconds';
+const PREF_KEY_CLOCK: string = 'amlyrics.showClock';
+const PREF_KEY_CLOCK_SECONDS: string = 'amlyrics.clockSeconds';
 /** 歌词字体大小档位 / 歌词时差（毫秒）——与鸿蒙端一致 */
-const PREF_KEY_FONT_SCALE: string = 'homolyrics.lyricFontScale';
-const PREF_KEY_OFFSET_MS: string = 'homolyrics.lyricOffsetMs';
+const PREF_KEY_FONT_SCALE: string = 'amlyrics.lyricFontScale';
+const PREF_KEY_OFFSET_MS: string = 'amlyrics.lyricOffsetMs';
 /** 歌词字体大小可选档位（1 = 默认字号，不设置 CSS 变量保证零回归） */
 const FONT_SCALE_STEPS: number[] = [0.75, 0.875, 1, 1.125, 1.25, 1.5];
 /** 歌词时差调节步长与范围（毫秒） */
@@ -462,7 +462,7 @@ const App: React.FC = () => {
     }
     const lineMs: number = e.line.getLine().startTime;
     const ms: number = Math.max(0, lineMs - lyricOffsetMs); // 时差：目标时间 = 行时间 - 时差
-    nativeLog(`[HomoLyrics] onLyricLineClick lineIndex=${e.lineIndex} time=${ms}`);
+    nativeLog(`[AMLyrics] onLyricLineClick lineIndex=${e.lineIndex} time=${ms}`);
     nativeSeekTo(ms);
     baseRef.current = { position: ms, state: playback.state, syncTime: performance.now() };
     setCurrentTime(ms);
@@ -954,14 +954,14 @@ const App: React.FC = () => {
     const lines: LyricLine[] = parseLyric(result.rawText, result.format);
     // 净化：剔除作词/作曲/制作人 等制作信息行
     const cleanLines: LyricLine[] = lines.filter((l: LyricLine): boolean => !isCreditLine(l));
-    nativeLog(`[HomoLyrics] onLyricResult format=${result.format} source=${result.source} lines=${lines.length} clean=${cleanLines.length}`);
+    nativeLog(`[AMLyrics] onLyricResult format=${result.format} source=${result.source} lines=${lines.length} clean=${cleanLines.length}`);
     setLyricLines(cleanLines);
     setHasLyric(cleanLines.length > 0);
   }, []);
 
   /** 原生 → Web：歌词获取失败（全部源） */
   const onLyricError = useCallback((message: string): void => {
-    nativeLog(`[HomoLyrics] onLyricError: ${message}`);
+    nativeLog(`[AMLyrics] onLyricError: ${message}`);
     setLyricLines([]);
     setHasLyric(false);
   }, []);
@@ -1217,7 +1217,7 @@ const App: React.FC = () => {
     // 读取歌词源优先级配置
     const config = nativeGetLyricSources();
     if (config) setSourcesConfig(config);
-    nativeLog('[HomoLyrics] App mounted, notifying native ready');
+    nativeLog('[AMLyrics] App mounted, notifying native ready');
     nativeNotifyReady();
     // 注意：此处清理不得取消 RAF 循环，否则 effect 因处理器引用变化重跑时会停掉进度驱动
   }, [onPlaybackUpdate, onLyricResult, onLyricError, onCoverUpdate, onLowFreqUpdate, onQueueUpdate]);

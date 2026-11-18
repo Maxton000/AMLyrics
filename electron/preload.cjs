@@ -1,12 +1,12 @@
 /**
- * Electron 预加载：注入与 homo-lyrics-master 完全一致的 window.HomoNative 契约，
- * 并把主进程推送转换成 window.HomoLyricApp 上的回调调用。
- * 使用 contextIsolation: false，保持原前端“直接给 window.HomoLyricApp 赋值”的写法不变。
+ * Electron 预加载：注入与 homo-lyrics-master 完全一致的 window.AMLyricsNative 契约，
+ * 并把主进程推送转换成 window.AMLyricsApp 上的回调调用。
+ * 使用 contextIsolation: false，保持原前端“直接给 window.AMLyricsApp 赋值”的写法不变。
  */
 'use strict';
 const { ipcRenderer } = require('electron');
 
-window.HomoNative = {
+window.AMLyricsNative = {
   notifyReady() { ipcRenderer.send('native:notifyReady'); },
   fetchLyric(title, artist, duration) { ipcRenderer.send('native:fetchLyric', { title, artist, duration }); },
   seekTo(positionMs) { ipcRenderer.send('native:seekTo', positionMs); },
@@ -30,7 +30,7 @@ window.HomoNative = {
 function forward(channel, method) {
   ipcRenderer.on(channel, (_event, payload) => {
     try {
-      const app = window.HomoLyricApp;
+      const app = window.AMLyricsApp;
       if (app && typeof app[method] === 'function') app[method](payload);
     } catch (error) {
       console.error('[preload] ' + method + ' failed', error);

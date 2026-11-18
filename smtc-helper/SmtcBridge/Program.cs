@@ -1,6 +1,6 @@
 /*
  * SmtcBridge - Windows SMTC (GSMTC) <-> JSON lines bridge.
- * Used by HomoLyrics Electron main process to read now-playing info
+ * Used by AMLyrics Electron main process to read now-playing info
  * (title / artist / album / cover / timeline / playback state) and to
  * send transport commands (play / pause / next / previous / seek).
  *

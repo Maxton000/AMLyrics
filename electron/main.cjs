@@ -1,5 +1,5 @@
 /**
- * HomoLyrics for Windows — Electron 主进程。
+ * AMLyrics for Windows — Electron 主进程。
  * 只做两件事：
  *  1) 承载 homo-lyrics-master 原封不动的 AMLL 前端界面
  *  2) 把 HarmonyOS 原生桥接替换为 Windows SMTC（本地获取歌曲信息）+ 原项目联网歌词匹配
@@ -80,9 +80,9 @@ function logFile() {
   try {
     const dir = app.getPath('userData');
     fs.mkdirSync(dir, { recursive: true });
-    return path.join(dir, 'homo-lyrics.log');
+    return path.join(dir, 'amlyrics.log');
   } catch {
-    return path.join(app.getAppPath(), 'homo-lyrics.log');
+    return path.join(app.getAppPath(), 'amlyrics.log');
   }
 }
 
@@ -92,7 +92,7 @@ function log(message) {
     if (!logStream) logStream = fs.createWriteStream(logFile(), { flags: 'a' });
     logStream.write(line);
   } catch { /* ignore */ }
-  console.log('[HomoLyrics] ' + message);
+  console.log('[AMLyrics] ' + message);
 }
 
 function helperExecutable() {
@@ -326,7 +326,7 @@ app.on('before-quit', () => {
   globalShortcut.unregisterAll();
 });
 
-// ===================== Web → Native (HomoNative) =====================
+// ===================== Web → Native (AMLyricsNative) =====================
 
 ipcMain.on('native:notifyReady', () => {
   log('renderer ready');

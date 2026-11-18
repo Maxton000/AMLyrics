@@ -1,8 +1,8 @@
 /**
  * 桥接层。
  * - 定义与原生侧契约一致的推送/回调类型
- * - 封装 window.HomoNative（原生注入对象）调用：notifyReady / fetchLyric / log
- * - 向 window.HomoLyricApp 注册消息处理器（原生 runJavaScript 调用入口）
+ * - 封装 window.AMLyricsNative（原生注入对象）调用：notifyReady / fetchLyric / log
+ * - 向 window.AMLyricsApp 注册消息处理器（原生 runJavaScript 调用入口）
  *
  * 严格遵循 plan.md Contracts & Interfaces。
  */
@@ -45,8 +45,8 @@ export interface QueueItem {
   isCurrent: boolean;
 }
 
-/** 原生注入对象（window.HomoNative） */
-export interface HomoNative {
+/** 原生注入对象（window.AMLyricsNative） */
+export interface AMLyricsNative {
   notifyReady(): void;
   fetchLyric(title: string, artist: string, duration: number): void;
   seekTo(positionMs: number): void;
@@ -75,7 +75,7 @@ export interface HomoNative {
 }
 
 /** 应用侧消息处理器（原生 → Web） */
-export interface HomoLyricAppHandlers {
+export interface AMLyricsAppHandlers {
   onPlaybackUpdate(playback: NowPlayingInfo): void;
   onLyricResult(result: LyricFetchResult): void;
   onLyricError(message: string): void;
@@ -86,13 +86,13 @@ export interface HomoLyricAppHandlers {
 }
 
 interface WindowWithBridge {
-  HomoNative?: HomoNative;
-  HomoLyricApp?: HomoLyricAppHandlers;
+  AMLyricsNative?: AMLyricsNative;
+  AMLyricsApp?: AMLyricsAppHandlers;
 }
 
-function nativeBridge(): HomoNative | undefined {
+function nativeBridge(): AMLyricsNative | undefined {
   const w = window as unknown as WindowWithBridge;
-  return w.HomoNative;
+  return w.AMLyricsNative;
 }
 
 /** 通知原生：Web 与 React 组件挂载完成 */
@@ -264,9 +264,9 @@ export function nativeLog(message: string): void {
   }
 }
 
-/** 注册消息处理器到 window.HomoLyricApp */
-export function registerAppHandlers(handlers: HomoLyricAppHandlers): void {
-  const app: HomoLyricAppHandlers = {
+/** 注册消息处理器到 window.AMLyricsApp */
+export function registerAppHandlers(handlers: AMLyricsAppHandlers): void {
+  const app: AMLyricsAppHandlers = {
     onPlaybackUpdate: (playback: NowPlayingInfo): void => handlers.onPlaybackUpdate(playback),
     onLyricResult: (result: LyricFetchResult): void => handlers.onLyricResult(result),
     onLyricError: (message: string): void => handlers.onLyricError(message),
@@ -276,6 +276,6 @@ export function registerAppHandlers(handlers: HomoLyricAppHandlers): void {
     onQueueUpdate: (items: QueueItem[]): void => handlers.onQueueUpdate(items),
   };
   const w = window as unknown as WindowWithBridge;
-  w.HomoLyricApp = app;
-  nativeLog('[HomoLyrics] HomoLyricApp handlers registered');
+  w.AMLyricsApp = app;
+  nativeLog('[AMLyrics] AMLyricsApp handlers registered');
 }

@@ -1,4 +1,4 @@
-"""Generate a simple 256x256 ICO for HomoLyrics (no external dependencies)."""
+"""Generate a simple 256x256 ICO for AMLyrics (no external dependencies)."""
 import math
 import os
 import struct

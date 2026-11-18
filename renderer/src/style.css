@@ -1,4 +1,4 @@
-/* HomoLyrics 歌词页样式（Apple Music 深色沉浸风格，竖屏/横屏自适应）
+/* AMLyrics 歌词页样式（Apple Music 深色沉浸风格，竖屏/横屏自适应）
  * 统一视图：播放页与歌词页共用 .player-view，切换只改布局类（.lyrics-mode），
  * 封面/歌名/按钮通过 FLIP 过渡，底部控制区固定不动。
  */

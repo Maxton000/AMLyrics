@@ -1,4 +1,4 @@
-# HomoLyrics for Windows
+# AMLyrics
 
 Windows 桌面歌词播放器。读取系统 SMTC（System Media Transport Controls）的播放信息，
 用 [AMLL](https://github.com/Steve-xmh/applemusic-like-lyrics)（Apple Music Like Lyrics）
