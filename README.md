@@ -9,6 +9,11 @@ Windows 桌面歌词播放器。读取系统 SMTC（System Media Transport Contr
 
 当前版本：**1.2.0**
 
+> **许可提示**：本仓库作者编写的代码按 **Apache-2.0** 授权；但歌词渲染依赖
+> [AMLL](https://github.com/Steve-xmh/applemusic-like-lyrics)（**AGPL-3.0-only**），
+> 因此**分发可执行产物时整体需按 AGPL-3.0 提供完整对应源码**。详见文末「许可」与
+> [THIRD-PARTY-NOTICES.md](./THIRD-PARTY-NOTICES.md)。
+
 ## 功能
 
 - **系统级播放接入**：任意支持 SMTC 的播放器（网易云、QQ 音乐、Spotify、浏览器等）都能驱动界面。
